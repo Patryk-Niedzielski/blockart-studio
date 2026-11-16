@@ -1,0 +1,177 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+  <title>BlockArt Studio – image to Minecraft pixel art</title>
+  <meta name="description" content="Turn any picture into Minecraft block pixel art. Export WorldEdit .schem and Litematica .litematic files with a material list. Free, works offline, runs in your browser.">
+  <meta name="theme-color" content="#14161c">
+  <meta property="og:title" content="BlockArt Studio">
+  <meta property="og:description" content="Turn any picture into Minecraft block pixel art – .schem & .litematic export.">
+  <meta property="og:image" content="https://patryk-niedzielski.github.io/blockart-studio/docs/screenshot.png">
+  <link rel="manifest" href="manifest.webmanifest">
+  <link rel="icon" href="icons/icon.svg" type="image/svg+xml">
+  <link rel="apple-touch-icon" href="icons/apple-touch-icon.png">
+  <meta name="mobile-web-app-capable" content="yes">
+  <meta name="apple-mobile-web-app-capable" content="yes">
+  <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+  <link rel="stylesheet" href="css/style.css">
+</head>
+<body>
+  <header class="topbar">
+    <a class="brand" href="./">
+      <img src="icons/icon.svg" alt="" width="32" height="32">
+      <span><b>BlockArt</b> Studio</span>
+    </a>
+    <p class="tagline" data-i18n="tagline"></p>
+    <div class="top-actions">
+      <button id="installBtn" class="btn ghost small" hidden><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M12 4v11m-5-5 5 5 5-5M5 20h14"/></svg><span data-i18n="install"></span></button>
+      <div class="lang" role="group" aria-label="Language">
+        <button data-lang="pl">PL</button><button data-lang="en">EN</button>
+      </div>
+    </div>
+  </header>
+
+  <main class="layout">
+    <aside class="panel" id="panel">
+      <section class="card" id="changeCard" hidden>
+        <input type="file" id="fileInput" accept="image/*" hidden>
+        <button class="btn primary block" id="changeBtn" data-i18n="change_image"></button>
+      </section>
+
+      <section class="card">
+        <h2 data-i18n="sec_size"></h2>
+        <div class="row two">
+          <label class="field"><span data-i18n="width"></span>
+            <input type="number" id="width" min="8" max="512" step="1" inputmode="numeric"></label>
+          <label class="field"><span data-i18n="height"></span>
+            <input type="number" id="height" min="8" max="512" step="1" inputmode="numeric"></label>
+        </div>
+        <input type="range" id="widthRange" min="8" max="512" step="1" aria-label="Width">
+        <label class="check"><input type="checkbox" id="lockRatio" checked> <span data-i18n="lock_ratio"></span></label>
+      </section>
+
+      <section class="card">
+        <h2 data-i18n="sec_orientation"></h2>
+        <div class="segmented" role="radiogroup" id="orientation">
+          <button role="radio" data-value="wall"><svg viewBox="0 0 24 24" aria-hidden="true"><rect x="5" y="3" width="14" height="18" rx="1"/></svg><span data-i18n="wall"></span></button>
+          <button role="radio" data-value="floor"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M2 17 8 9h14l-6 8z"/></svg><span data-i18n="floor"></span></button>
+        </div>
+        <p class="hint" id="orientationHint"></p>
+        <label class="field"><span data-i18n="sec_version"></span>
+          <select id="version"></select></label>
+      </section>
+
+      <section class="card">
+        <h2 data-i18n="sec_colors"></h2>
+        <label class="field"><span data-i18n="dither"></span>
+          <select id="dither">
+            <option value="none" data-i18n="dither_none"></option>
+            <option value="floyd" data-i18n="dither_floyd"></option>
+            <option value="atkinson" data-i18n="dither_atkinson"></option>
+            <option value="ordered" data-i18n="dither_ordered"></option>
+          </select></label>
+        <div class="slider" id="strengthRow"><span data-i18n="strength"></span><input type="range" id="strength" min="0" max="100"><output></output></div>
+        <div class="slider"><span data-i18n="brightness"></span><input type="range" id="brightness" min="-100" max="100"><output></output></div>
+        <div class="slider"><span data-i18n="contrast"></span><input type="range" id="contrast" min="-100" max="100"><output></output></div>
+        <div class="slider"><span data-i18n="saturation"></span><input type="range" id="saturation" min="0" max="200"><output></output></div>
+        <button class="btn ghost small" id="resetAdjust" data-i18n="reset"></button>
+      </section>
+
+      <section class="card">
+        <h2 data-i18n="sec_palette"></h2>
+        <p class="hint" data-i18n="palette_hint"></p>
+        <div class="chips" id="categories"></div>
+        <p class="warn" id="gravityWarn" hidden data-i18n="gravity_warn"></p>
+        <details class="custom">
+          <summary data-i18n="customize"></summary>
+          <div class="custom-tools">
+            <input type="search" id="blockSearch" data-i18n-placeholder="search_blocks">
+            <button class="btn ghost small" id="allBlocks" data-i18n="all"></button>
+            <button class="btn ghost small" id="noBlocks" data-i18n="none"></button>
+          </div>
+          <div class="block-grid" id="blockGrid"></div>
+        </details>
+      </section>
+    </aside>
+
+    <section class="stage" id="stage">
+      <div class="dropzone" id="dropzone" tabindex="0" role="button">
+        <div class="drop-inner">
+          <svg viewBox="0 0 64 64" aria-hidden="true" class="drop-icon">
+            <rect x="6" y="14" width="52" height="40" rx="4"/><path d="m14 46 12-14 9 10 6-6 9 10"/><circle cx="44" cy="25" r="4"/>
+          </svg>
+          <h1 data-i18n="drop_title"></h1>
+          <p data-i18n="drop_sub"></p>
+          <button class="btn ghost" id="sampleBtn" data-i18n="try_sample"></button>
+        </div>
+      </div>
+
+      <div class="workspace" id="workspace" hidden>
+        <div class="toolbar">
+          <div class="segmented compact" id="viewMode" role="radiogroup">
+            <button role="radio" data-value="blocks" data-i18n="blocks_view"></button>
+            <button role="radio" data-value="original" data-i18n="original"></button>
+          </div>
+          <label class="check"><input type="checkbox" id="showGrid"> <span data-i18n="grid"></span></label>
+          <label class="check"><input type="checkbox" id="showShading" checked> <span data-i18n="shading"></span></label>
+          <div class="zoom">
+            <button class="btn icon" id="zoomOut" aria-label="Zoom out">−</button>
+            <button class="btn ghost small" id="zoomFit" data-i18n="fit"></button>
+            <button class="btn icon" id="zoomIn" aria-label="Zoom in">+</button>
+          </div>
+        </div>
+        <div class="viewport" id="viewport">
+          <canvas id="preview"></canvas>
+          <div class="tooltip" id="tooltip" hidden></div>
+          <div class="busy" id="busy" hidden><span class="spinner"></span><span data-i18n="processing"></span></div>
+        </div>
+        <p class="hint center" data-i18n="tip_hover"></p>
+
+        <div class="stats" id="stats"></div>
+        <div class="warn" id="sizeWarn" hidden></div>
+
+        <div class="card export">
+          <h2 data-i18n="sec_export"></h2>
+          <div class="export-grid">
+            <button class="btn primary" id="dlSchem"><span data-i18n="dl_schem"></span></button>
+            <button class="btn primary" id="dlLitematic"><span data-i18n="dl_litematic"></span></button>
+            <button class="btn" id="dlPng"><span data-i18n="dl_png"></span></button>
+            <button class="btn" id="dlList"><span data-i18n="dl_list"></span></button>
+          </div>
+        </div>
+
+        <div class="card">
+          <div class="card-head">
+            <h2 data-i18n="materials"></h2>
+            <button class="btn ghost small" id="copyList" data-i18n="copy_list"></button>
+          </div>
+          <div class="table-wrap">
+            <table class="materials">
+              <thead><tr><th data-i18n="th_block"></th><th data-i18n="th_count"></th><th data-i18n="th_stacks"></th></tr></thead>
+              <tbody id="materials"></tbody>
+            </table>
+          </div>
+        </div>
+
+        <details class="card howto">
+          <summary><h2 data-i18n="howto"></h2></summary>
+          <div class="howto-cols">
+            <div><h3 data-i18n="howto_we_title"></h3><ol id="howtoWe"></ol></div>
+            <div><h3 data-i18n="howto_lm_title"></h3><ol id="howtoLm"></ol></div>
+          </div>
+        </details>
+      </div>
+    </section>
+  </main>
+
+  <footer class="footer">
+    <p data-i18n="footer"></p>
+    <p><a href="https://github.com/Patryk-Niedzielski/blockart-studio">GitHub</a> · MIT License</p>
+  </footer>
+
+  <div class="toast" id="toast" role="status" aria-live="polite"></div>
+
+  <script type="module" src="js/app.js"></script>
+</body>
+</html>

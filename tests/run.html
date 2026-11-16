@@ -1,0 +1,55 @@
+<!doctype html><meta charset="utf-8"><title>tests</title>
+<pre id="out">running</pre>
+<script type="module">
+import { BLOCKS } from '../js/blocks.js';
+import { quantize, rgbToOklab } from '../js/color.js';
+import { buildStructure, schemNbt, litematicNbt, toSchem, packLitematica } from '../js/export.js';
+import { gzipStored, varintArray } from '../js/nbt.js';
+const res = { checks: [] };
+const ok = (name, cond) => res.checks.push([name, !!cond]);
+const b64 = (u8) => { let s = ''; for (const x of u8) s += String.fromCharCode(x); return btoa(s); };
+
+// 1. Exact palette colours map to themselves
+const pal = BLOCKS.slice(0, 64).map((b) => b.rgb);
+const rgba = new Uint8ClampedArray(64 * 4);
+pal.forEach((c, i) => rgba.set([...c, 255], i * 4));
+const q = quantize(rgba, { width: 64, height: 1, palette: pal, dither: 'none' });
+ok('exact colours match', [...q].every((v, i) => pal[v].join() === pal[i].join()));
+// 2. Transparency → -1
+const t = new Uint8ClampedArray([255, 0, 0, 0, 255, 0, 0, 255]);
+const qt = quantize(t, { width: 2, height: 1, palette: pal, dither: 'floyd' });
+ok('transparent is air', qt[0] === -1 && qt[1] >= 0);
+// 3. Dithering of mid grey between black & white produces both
+const grey = new Uint8ClampedArray(16 * 16 * 4).map((_, i) => (i % 4 === 3 ? 255 : 128));
+const qd = quantize(grey, { width: 16, height: 16, palette: [[0, 0, 0], [255, 255, 255]], dither: 'floyd', strength: 1 });
+const whites = [...qd].filter((v) => v === 1).length;
+ok('dither mixes', whites > 60 && whites < 196);
+ok('oklab white L≈1', Math.abs(rgbToOklab(255, 255, 255)[0] - 1) < 1e-3);
+// 4. varint
+ok('varint', varintArray([0, 127, 128, 300]).join() === '0,127,128,1,172,2');
+// 5. bit packing round-trip
+const cells = Uint16Array.from({ length: 1000 }, (_, i) => (i * 7) % 37);
+const bits = 6, packed = packLitematica(cells, bits);
+let rt = true;
+for (let i = 0; i < cells.length; i++) {
+  const s = i * bits, a = s >> 6, b = (s + bits - 1) >> 6, off = BigInt(s & 63), mask = (1n << BigInt(bits)) - 1n;
+  let v = BigInt.asUintN(64, packed[a]) >> off;
+  if (a !== b) v |= BigInt.asUintN(64, packed[b]) << (64n - off);
+  if (Number(v & mask) !== cells[i]) { rt = false; break; }
+}
+ok('litematica packing round-trip', rt);
+
+// 6. Fixture structures for the Python verifier: 5×3 image, last pixel transparent
+const idx = Int16Array.from([0, 1, 2, 3, 4, 5, 6, 7, 8, 9, 0, 1, 2, 3, -1]);
+const wall = buildStructure(idx, 5, 3, BLOCKS, 'wall');
+const floor = buildStructure(idx, 5, 3, BLOCKS, 'floor');
+res.fixture = {
+  idx: [...idx], ids: BLOCKS.slice(0, 10).map((b) => b.id),
+  wallSchem: b64(gzipStored(schemNbt(wall, 3465, 'test'))),
+  floorSchem: b64(gzipStored(schemNbt(floor, 3465, 'test'))),
+  wallLitematic: b64(gzipStored(litematicNbt(wall, 3465, 20, 'test'))),
+  floorLitematic: b64(gzipStored(litematicNbt(floor, 3465, 20, 'test'))),
+  nativeGzip: b64(await toSchem(wall, 3465, 'test')),
+};
+document.getElementById('out').textContent = 'RESULT:' + JSON.stringify(res) + ':END';
+</script>

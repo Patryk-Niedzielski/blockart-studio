@@ -1,0 +1,21 @@
+<!doctype html><meta charset="utf-8"><title>dither compare</title>
+<style>body{background:#111;color:#ddd;font:13px system-ui;margin:8px}div{display:inline-block;margin:4px}canvas{width:384px;image-rendering:pixelated;display:block}</style>
+<body><script type="module">
+import { BLOCKS, CATEGORIES } from '../js/blocks.js';
+import { quantize } from '../js/color.js';
+const img = new Image(); img.src = new URLSearchParams(location.search).get('src') || 'sample.png';
+await img.decode();
+const W = 128, H = Math.round(W * img.height / img.width);
+const c = document.createElement('canvas'); c.width = W; c.height = H;
+const g = c.getContext('2d'); g.imageSmoothingQuality = 'high'; g.drawImage(img, 0, 0, W, H);
+const rgba = g.getImageData(0, 0, W, H).data;
+const pal = BLOCKS.filter((b) => ['concrete', 'wool', 'terracotta'].includes(b.category));
+for (const [d, s] of [['none', 0], ['floyd', 0.5], ['floyd', 0.85], ['atkinson', 1], ['ordered', 0.5]]) {
+  const q = quantize(rgba, { width: W, height: H, palette: pal.map((b) => b.rgb), dither: d, strength: s });
+  const o = document.createElement('canvas'); o.width = W; o.height = H;
+  const og = o.getContext('2d'); const id = og.createImageData(W, H);
+  q.forEach((v, p) => { if (v >= 0) { id.data.set([...pal[v].rgb, 255], p * 4); } });
+  og.putImageData(id, 0, 0);
+  const div = document.createElement('div'); div.textContent = `${d} ${s}`; div.appendChild(o); document.body.appendChild(div);
+}
+</script>

@@ -1,0 +1,80 @@
+<!doctype html><meta charset="utf-8"><title>e2e</title>
+<pre id="out">running</pre>
+<iframe id="app" src="../?lang=en" width="1200" height="900"></iframe>
+<script type="module">
+const out = document.getElementById('out');
+const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
+const frame = document.getElementById('app');
+await new Promise((r) => frame.addEventListener('load', r, { once: true }));
+const w = frame.contentWindow, d = frame.contentDocument, $ = (s) => d.querySelector(s);
+const checks = [], files = {};
+const ok = (n, c) => checks.push([n, !!c]);
+const b64 = async (blob) => { const u = new Uint8Array(await blob.arrayBuffer()); let s = ''; for (const x of u) s += String.fromCharCode(x); return btoa(s); };
+const waitFor = async (fn, ms = 8000) => { const t0 = Date.now(); while (Date.now() - t0 < ms) { if (fn()) return true; await sleep(50); } return false; };
+
+// capture downloads
+const blobs = [];
+const orig = w.URL.createObjectURL.bind(w.URL);
+w.URL.createObjectURL = (b) => { blobs.push(b); return orig(b); };
+w.HTMLAnchorElement.prototype.click = function () { blobs[blobs.length - 1].fileName = this.download; };
+
+w.localStorage.clear();
+ok('dropzone visible first', !$('#dropzone').hidden && $('#workspace').hidden);
+$('#sampleBtn').click();
+ok('result rendered', await waitFor(() => $('#materials').children.length > 0));
+ok('stats show 128x80', $('#stats').textContent.includes('128 × 80 × 1'));
+ok('change button shown', !$('#changeCard').hidden);
+
+// floor + width change
+$('#orientation [data-value="floor"]').click();
+ok('floor dims', $('#stats').textContent.includes('128 × 1 × 80'));
+const wi = $('#width'); wi.value = 64; wi.dispatchEvent(new Event('change'));
+ok('height follows ratio', $('#height').value === '40');
+await waitFor(() => $('#stats').textContent.includes('64 × 1 × 40'));
+ok('resized result', $('#stats').textContent.includes('64 × 1 × 40'));
+
+// palette: only wool
+$('#categories [data-cat="concrete"]').click();
+$('#categories [data-cat="terracotta"]').click();
+await sleep(400);
+const names = [...d.querySelectorAll('#materials td:first-child')].map((t) => t.textContent.trim());
+ok('only wool used', names.length > 0 && names.every((n) => n.endsWith('Wool')));
+// none → downloads disabled
+$('#noBlocks').click(); await sleep(300);
+ok('no blocks disables download', $('#dlSchem').disabled && !$('#sizeWarn').hidden);
+$('#allBlocks').click(); await sleep(400);
+ok('all blocks re-enabled', !$('#dlSchem').disabled);
+ok('gravity warn hidden on floor', $('#gravityWarn').hidden);
+$('#orientation [data-value="wall"]').click();
+ok('gravity warn on wall with powder', !$('#gravityWarn').hidden);
+
+// view toggles, zoom, grid, language
+$('#showGrid').click(); $('#zoomIn').click(); $('#zoomIn').click();
+const cv = $('#preview');
+ok('zoom grew canvas', parseFloat(cv.style.width) >= 64 * 2);
+$('#viewMode [data-value="original"]').click(); $('#viewMode [data-value="blocks"]').click();
+$('#zoomFit').click();
+d.querySelector('.lang [data-lang="pl"]').click();
+ok('polish strings', $('#dlList span').textContent.includes('Lista'));
+d.querySelector('.lang [data-lang="en"]').click();
+// version filter: 1.16 hides cherry planks
+$('#version').value = '1.16.x'; $('#version').dispatchEvent(new Event('change'));
+ok('version filters blocks', !$('#blockGrid [data-id="minecraft:cherry_planks"]') && $('#blockGrid [data-id="minecraft:oak_planks"]'));
+$('#version').value = '1.20.x'; $('#version').dispatchEvent(new Event('change'));
+await sleep(400);
+
+// tooltip
+const r = cv.getBoundingClientRect();
+cv.dispatchEvent(new w.PointerEvent('pointermove', { clientX: r.left + 5, clientY: r.top + 5, bubbles: true }));
+ok('tooltip shows block', !$('#tooltip').hidden && /x 0/.test($('#tooltip').textContent));
+
+// downloads
+for (const id of ['#dlSchem', '#dlLitematic', '#dlPng', '#dlList']) { $(id).click(); await sleep(300); }
+await waitFor(() => blobs.filter((b) => b.fileName).length >= 4);
+for (const b of blobs.filter((x) => x.fileName)) files[b.fileName] = await b64(b);
+ok('4 files', Object.keys(files).length === 4);
+ok('settings persisted', JSON.parse(w.localStorage.getItem('ba-settings-v1')).width === 64);
+const payload = 'RESULT:' + JSON.stringify({ checks, files, stats: $('#stats').textContent }) + ':END';
+out.textContent = payload;
+fetch('/__result', { method: 'POST', body: payload.replace(/&/g, '&amp;').replace(/</g, '&lt;') });
+</script>
